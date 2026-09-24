@@ -1,6 +1,5 @@
 import { getAuthenticatedContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/prisma';
-import { AppShell } from '@/components/layout/app-shell';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
@@ -23,16 +22,14 @@ export default async function SettingsPage() {
   });
 
   return (
-    <AppShell user={user} partner={partner}>
-      <PageContainer>
-        <PageHeader
-          title="Settings"
-          description="Manage your account preferences, theme, and relationship overview."
-        />
-        <PageContent>
-          <SettingsView user={user} partner={partner} settings={settings} />
-        </PageContent>
-      </PageContainer>
-    </AppShell>
+    <PageContainer>
+      <PageHeader
+        title="Settings"
+        description="Manage your account preferences, theme, and relationship overview."
+      />
+      <PageContent>
+        <SettingsView user={user} partner={partner} settings={settings} />
+      </PageContent>
+    </PageContainer>
   );
 }

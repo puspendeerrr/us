@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getAuthenticatedContext } from '@/lib/auth/context';
 import { getNote } from '@/lib/notes/notes.service';
-import { AppShell } from '@/components/layout/app-shell';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageContent } from '@/components/layout/page-content';
 import { NoteEditorView } from '@/components/notes/note-editor-view';
@@ -21,12 +20,10 @@ export default async function NoteDetailPage({ params }: NoteDetailPageProps) {
   }
 
   return (
-    <AppShell user={user} partner={partner}>
-      <PageContainer>
-        <PageContent>
-          <NoteEditorView initialNote={note} currentUserId={user.id} />
-        </PageContent>
-      </PageContainer>
-    </AppShell>
+    <PageContainer>
+      <PageContent>
+        <NoteEditorView initialNote={note} currentUserId={user.id} />
+      </PageContent>
+    </PageContainer>
   );
 }

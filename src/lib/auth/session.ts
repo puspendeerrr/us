@@ -72,11 +72,13 @@ export async function validateSessionToken(token: string): Promise<SessionUser |
   return session.user;
 }
 
+import { cache } from 'react';
+
 /**
  * Retrieves the currently authenticated user from the HTTP-only cookie.
- * Always derived server-side.
+ * Always derived server-side. Wrapped with React.cache to eliminate duplicate lookups per request.
  */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -85,7 +87,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
 
   return validateSessionToken(token);
-}
+});
 
 /**
  * Sets the session cookie in HTTP-only mode.

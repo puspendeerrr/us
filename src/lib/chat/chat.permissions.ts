@@ -24,7 +24,12 @@ export async function isCoupleMember(userId: string): Promise<boolean> {
 /**
  * Retrieves the other partner in the two-person relationship.
  */
-export async function getPartner(currentUserId: string): Promise<{ id: string; displayName: string } | null> {
+export async function getPartner(currentUserId: string): Promise<{
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  lastSeenAt: Date;
+} | null> {
   const partner = await prisma.user.findFirst({
     where: {
       id: { not: currentUserId },
@@ -32,6 +37,8 @@ export async function getPartner(currentUserId: string): Promise<{ id: string; d
     select: {
       id: true,
       displayName: true,
+      avatarUrl: true,
+      lastSeenAt: true,
     },
   });
   return partner;

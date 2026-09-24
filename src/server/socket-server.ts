@@ -10,10 +10,14 @@ import {
   deleteMessage,
 } from '@/lib/chat/chat.service';
 import { ReactionType } from '@/lib/chat/chat.types';
+import { prisma } from '@/lib/prisma';
 
 const PORT = Number(process.env.PORT || process.env.SOCKET_PORT || 3001);
 
 let ioInstance: SocketIOServer | null = null;
+
+// Multi-device connection registry: Map<userId, Set<socketId>>
+const userSockets = new Map<string, Set<string>>();
 
 export function getIO(): SocketIOServer | null {
   return ioInstance;
@@ -98,6 +102,25 @@ export function createSocketServer(httpServer?: any): SocketIOServer {
         return;
       }
 
+      // Internal presence query endpoint: /presence?userId=...
+      if (req.url?.startsWith('/presence') && req.method === 'GET') {
+        const urlObj = new URL(req.url, 'http://localhost');
+        const userId = urlObj.searchParams.get('userId');
+        if (!userId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'userId is required' }));
+          return;
+        }
+        const sockets = userSockets.get(userId);
+        const isOnline = Boolean(sockets && sockets.size > 0);
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+        res.end(JSON.stringify({ userId, isOnline }));
+        return;
+      }
+
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
     });
@@ -157,10 +180,38 @@ export function createSocketServer(httpServer?: any): SocketIOServer {
 
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user;
+    const partner = socket.data.partner;
     const roomId = socket.data.roomId;
 
     // Join the deterministic private couple room
     socket.join(roomId);
+
+    // Multi-device / multi-tab presence tracking
+    let userSocketSet = userSockets.get(user.id);
+    if (!userSocketSet) {
+      userSocketSet = new Set<string>();
+      userSockets.set(user.id, userSocketSet);
+    }
+    const wasOffline = userSocketSet.size === 0;
+    userSocketSet.add(socket.id);
+
+    if (wasOffline) {
+      // User is now Online -> broadcast to couple room
+      io.to(roomId).emit('presence:update', {
+        userId: user.id,
+        isOnline: true,
+        lastSeenAt: null,
+      });
+    }
+
+    // Immediately supply the connecting socket with current partner presence
+    const partnerSockets = userSockets.get(partner.id);
+    const isPartnerOnline = Boolean(partnerSockets && partnerSockets.size > 0);
+    socket.emit('presence:init', {
+      userId: partner.id,
+      isOnline: isPartnerOnline,
+      lastSeenAt: partner.lastSeenAt ? partner.lastSeenAt.toISOString() : null,
+    });
 
     // 1. Send Message
     socket.on('message:send', async (payload: { content: string; replyToId?: string }, callback) => {
@@ -257,10 +308,38 @@ export function createSocketServer(httpServer?: any): SocketIOServer {
       });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
+      // Clear typing indicator
       socket.to(roomId).emit('typing:stop', {
         userId: user.id,
       });
+
+      // Multi-device / multi-tab disconnect handling
+      const userSocketSet = userSockets.get(user.id);
+      if (userSocketSet) {
+        userSocketSet.delete(socket.id);
+        if (userSocketSet.size === 0) {
+          userSockets.delete(user.id);
+          const now = new Date();
+
+          // Broadcast offline event with exact timestamp to partner immediately
+          io.to(roomId).emit('presence:update', {
+            userId: user.id,
+            isOnline: false,
+            lastSeenAt: now.toISOString(),
+          });
+
+          // Persist lastSeenAt in DB asynchronously
+          prisma.user
+            .update({
+              where: { id: user.id },
+              data: { lastSeenAt: now },
+            })
+            .catch((err) => {
+              console.error('[Socket presence] Failed to persist lastSeenAt:', err);
+            });
+        }
+      }
     });
   });
 

@@ -85,6 +85,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
         <div className="flex h-16 items-center justify-between px-5 border-b border-border">
           <Link
             href="/home"
+            prefetch={true}
             className="flex items-center gap-2 font-bold tracking-tight text-foreground transition-opacity hover:opacity-90"
           >
             <span className="text-base tracking-tight">Our Space</span>
@@ -122,6 +123,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={true}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   isActive
@@ -186,6 +188,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
         >
           <Link
             href="/home"
+            prefetch={true}
             className={cn(
               'flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors py-1 px-3',
               pathname === '/home' ? 'text-primary font-semibold' : 'text-muted-foreground'
@@ -196,6 +199,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
           </Link>
           <Link
             href="/notes"
+            prefetch={true}
             className={cn(
               'flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors py-1 px-3',
               pathname === '/notes' ? 'text-primary font-semibold' : 'text-muted-foreground'
@@ -206,6 +210,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
           </Link>
           <Link
             href="/chat"
+            prefetch={true}
             className={cn(
               'flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors py-1 px-3',
               pathname === '/chat' ? 'text-primary font-semibold' : 'text-muted-foreground'
@@ -216,6 +221,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
           </Link>
           <Link
             href="/settings"
+            prefetch={true}
             className={cn(
               'flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors py-1 px-3',
               pathname === '/settings' ? 'text-primary font-semibold' : 'text-muted-foreground'
@@ -252,6 +258,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors',

@@ -1,5 +1,4 @@
 import { getAuthenticatedContext } from '@/lib/auth/context';
-import { AppShell } from '@/components/layout/app-shell';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
@@ -11,19 +10,17 @@ export const metadata = {
 };
 
 export default async function VoicePage() {
-  const { user, partner } = await getAuthenticatedContext();
+  const { user } = await getAuthenticatedContext();
 
   return (
-    <AppShell user={user} partner={partner}>
-      <PageContainer>
-        <PageHeader
-          title="Voice Memories"
-          description="Spoken memories, intimate voice notes, and audio clips."
-        />
-        <PageContent>
-          <VoiceMemoriesClient currentUserId={user.id} />
-        </PageContent>
-      </PageContainer>
-    </AppShell>
+    <PageContainer>
+      <PageHeader
+        title="Voice Memories"
+        description="Spoken memories, intimate voice notes, and audio clips."
+      />
+      <PageContent>
+        <VoiceMemoriesClient currentUserId={user.id} />
+      </PageContent>
+    </PageContainer>
   );
 }

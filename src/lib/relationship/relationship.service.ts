@@ -15,46 +15,51 @@ export interface RelationshipSettingsDTO {
   updatedAt: Date;
 }
 
+import { cache } from 'react';
+
 /**
  * Retrieves the canonical relationship settings singleton.
  * Ensures partner names are aligned with current user records.
+ * Memoized with React.cache to avoid redundant queries during page transitions.
  */
-export async function getRelationshipSettings(): Promise<RelationshipSettingsDTO | null> {
+export const getRelationshipSettings = cache(async (): Promise<RelationshipSettingsDTO | null> => {
   let settings = await prisma.relationshipSettings.findUnique({
     where: { id: 'singleton' },
   });
 
-  // If not yet created, or partner names need synchronization
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: 'asc' },
-    take: 2,
-  });
-
-  const partnerAName = users[0]?.displayName || null;
-  const partnerBName = users[1]?.displayName || null;
-
-  if (!settings) {
-    settings = await prisma.relationshipSettings.create({
-      data: {
-        id: 'singleton',
-        title: 'Our Space',
-        timezone: 'UTC',
-        partnerAName,
-        partnerBName,
-      },
+  // Only query users if settings are missing or partner names need initial synchronization
+  if (!settings || !settings.partnerAName) {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'asc' },
+      take: 2,
     });
-  } else if (!settings.partnerAName && partnerAName) {
-    settings = await prisma.relationshipSettings.update({
-      where: { id: 'singleton' },
-      data: {
-        partnerAName,
-        partnerBName,
-      },
-    });
+
+    const partnerAName = users[0]?.displayName || null;
+    const partnerBName = users[1]?.displayName || null;
+
+    if (!settings) {
+      settings = await prisma.relationshipSettings.create({
+        data: {
+          id: 'singleton',
+          title: 'Our Space',
+          timezone: 'UTC',
+          partnerAName,
+          partnerBName,
+        },
+      });
+    } else if (partnerAName) {
+      settings = await prisma.relationshipSettings.update({
+        where: { id: 'singleton' },
+        data: {
+          partnerAName,
+          partnerBName,
+        },
+      });
+    }
   }
 
   return settings;
-}
+});
 
 /**
  * Updates the canonical relationship start epoch and timezone.

@@ -20,6 +20,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { formatLastSeen } from '@/lib/chat/presence';
 import { cn } from '@/lib/utils';
 
 interface ChatViewProps {
@@ -34,6 +35,7 @@ interface ChatViewProps {
     displayName: string;
     identifier: string;
     avatarUrl: string | null;
+    lastSeenAt?: Date | string | null;
   };
 }
 
@@ -51,6 +53,24 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
   const [replyTarget, setReplyTarget] = useState<RepliedMessageSummary | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Real partner presence state
+  const [partnerPresence, setPartnerPresence] = useState<{
+    isOnline: boolean;
+    lastSeenAt: string | Date | null;
+  }>({
+    isOnline: false,
+    lastSeenAt: partner.lastSeenAt || null,
+  });
+
+  // Minute-level ticker to refresh relative timestamp without high-frequency renders
+  const [, setPresenceTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPresenceTick((t) => t + 1);
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -138,6 +158,19 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
   useEffect(() => {
     loadInitialMessages();
 
+    // Initial partner presence query
+    fetch('/api/chat/presence')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.partner) {
+          setPartnerPresence({
+            isOnline: Boolean(data.partner.isOnline),
+            lastSeenAt: data.partner.lastSeenAt,
+          });
+        }
+      })
+      .catch(() => null);
+
     const socketUrl = getSocketUrl();
     const isSocketAvailable = Boolean(socketUrl);
     const socket = isSocketAvailable ? getSocketClient() : null;
@@ -155,6 +188,25 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
       const onConnectError = () => {
         setConnectionState('disconnected');
+      };
+
+      // Partner presence events
+      const onPresenceInit = (data: { userId: string; isOnline: boolean; lastSeenAt: string | null }) => {
+        if (data.userId === partner.id) {
+          setPartnerPresence({
+            isOnline: data.isOnline,
+            lastSeenAt: data.lastSeenAt,
+          });
+        }
+      };
+
+      const onPresenceUpdate = (data: { userId: string; isOnline: boolean; lastSeenAt: string | null }) => {
+        if (data.userId === partner.id) {
+          setPartnerPresence({
+            isOnline: data.isOnline,
+            lastSeenAt: data.lastSeenAt,
+          });
+        }
       };
 
       // Incoming new message
@@ -225,6 +277,8 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
       socket.on('connect_error', onConnectError);
+      socket.on('presence:init', onPresenceInit);
+      socket.on('presence:update', onPresenceUpdate);
       socket.on('message:new', onNewMessage);
       socket.on('message:read_receipt', onReadReceipt);
       socket.on('message:reaction_updated', onReactionUpdated);
@@ -238,6 +292,21 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
     // Smart background sync polling (active on Vercel or when socket is offline)
     const syncLatest = async () => {
+      // Refresh partner presence via REST if socket is not actively connected
+      if (!socket?.connected) {
+        fetch('/api/chat/presence')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data?.partner) {
+              setPartnerPresence({
+                isOnline: Boolean(data.partner.isOnline),
+                lastSeenAt: data.partner.lastSeenAt,
+              });
+            }
+          })
+          .catch(() => null);
+      }
+
       // If actively connected to WebSocket, let socket push events
       if (socket?.connected) return;
       // Pause polling if tab is backgrounded
@@ -317,6 +386,8 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
         socket.off('connect');
         socket.off('disconnect');
         socket.off('connect_error');
+        socket.off('presence:init');
+        socket.off('presence:update');
         socket.off('message:new');
         socket.off('message:read_receipt');
         socket.off('message:reaction_updated');
@@ -456,25 +527,14 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
               {partner.displayName}
             </h2>
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  connectionState === 'connected'
-                    ? 'bg-emerald-500'
-                    : connectionState === 'connecting'
-                    ? 'bg-amber-500 animate-pulse'
-                    : 'bg-muted-foreground/40'
-                )}
-              />
-              <span>
-                {connectionState === 'connected'
-                  ? getSocketUrl()
-                    ? 'Real-time connected'
-                    : 'Live sync active'
-                  : connectionState === 'connecting'
-                  ? 'Connecting...'
-                  : 'Offline (REST mode)'}
-              </span>
+              {partnerPresence.isOnline ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">Online</span>
+                </>
+              ) : (
+                <span>{formatLastSeen(partnerPresence.lastSeenAt)}</span>
+              )}
             </div>
           </div>
         </div>
