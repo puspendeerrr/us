@@ -89,13 +89,20 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
 /**
  * Sets the session cookie in HTTP-only mode.
+ * Supports configurable COOKIE_DOMAIN for cross-subdomain architecture (e.g. .puspender.in)
+ * and secure SameSite defaults.
  */
 export async function setSessionCookie(token: string, expiresAt: Date): Promise<void> {
   const cookieStore = await cookies();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+  const sameSite = (process.env.COOKIE_SAME_SITE as 'lax' | 'none' | 'strict') || 'lax';
+
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction,
+    sameSite: sameSite,
+    domain: cookieDomain,
     path: '/',
     expires: expiresAt,
   });
@@ -107,9 +114,14 @@ export async function setSessionCookie(token: string, expiresAt: Date): Promise<
 export async function invalidateCurrentSession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
   if (token) {
     await prisma.session.delete({ where: { sessionToken: token } }).catch(() => null);
-    cookieStore.delete(SESSION_COOKIE_NAME);
+    cookieStore.delete({
+      name: SESSION_COOKIE_NAME,
+      domain: cookieDomain,
+      path: '/',
+    });
   }
 }

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: our-space-socket
+    runtime: node
+    plan: starter
+    region: ohio
+    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma generate
+    startCommand: pnpm run start:socket
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_URL
+        value: https://sonam.puspender.in
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://sonam.puspender.in

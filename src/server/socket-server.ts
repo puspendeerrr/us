@@ -11,7 +11,7 @@ import {
 } from '@/lib/chat/chat.service';
 import { ReactionType } from '@/lib/chat/chat.types';
 
-const PORT = parseInt(process.env.SOCKET_PORT || '3001', 10);
+const PORT = Number(process.env.PORT || process.env.SOCKET_PORT || 3001);
 
 let ioInstance: SocketIOServer | null = null;
 
@@ -19,16 +19,100 @@ export function getIO(): SocketIOServer | null {
   return ioInstance;
 }
 
+/**
+ * Derives explicit allowed CORS origins from environment and defaults.
+ * Wildcard ('*') is strictly disallowed since credentials/cookies are required.
+ */
+export function getAllowedOrigins(): string[] {
+  const origins = new Set<string>([
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://sonam.puspender.in',
+  ]);
+
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    origins.add(process.env.NEXT_PUBLIC_APP_URL.trim().replace(/\/$/, ''));
+  }
+  if (process.env.APP_URL) {
+    origins.add(process.env.APP_URL.trim().replace(/\/$/, ''));
+  }
+  if (process.env.FRONTEND_URL) {
+    origins.add(process.env.FRONTEND_URL.trim().replace(/\/$/, ''));
+  }
+  if (process.env.ADDITIONAL_ALLOWED_ORIGINS) {
+    process.env.ADDITIONAL_ALLOWED_ORIGINS.split(',').forEach((o) => {
+      const trimmed = o.trim().replace(/\/$/, '');
+      if (trimmed) origins.add(trimmed);
+    });
+  }
+
+  return Array.from(origins);
+}
+
 export function createSocketServer(httpServer?: any): SocketIOServer {
-  const server = httpServer || createServer();
+  const allowedOrigins = getAllowedOrigins();
+
+  const server =
+    httpServer ||
+    createServer((req, res) => {
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cookie');
+      }
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      // Production health check endpoint
+      if (req.url === '/health' && req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            service: 'our-space-socket',
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
+
+      // Service status route
+      if (req.url === '/' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            service: 'our-space-socket',
+            health: '/health',
+          })
+        );
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    });
 
   const io = new SocketIOServer(server, {
     cors: {
-      origin: [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      ],
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. mobile native, server-to-server, health checks)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        console.warn(`[Socket CORS] Origin rejected: ${origin}`);
+        return callback(new Error(`Origin ${origin} not allowed by CORS`));
+      },
       credentials: true,
       methods: ['GET', 'POST'],
     },
@@ -181,8 +265,9 @@ export function createSocketServer(httpServer?: any): SocketIOServer {
   });
 
   if (!httpServer) {
-    server.listen(PORT, () => {
-      console.log(`Socket.IO server running on port ${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Socket.IO server running on http://0.0.0.0:${PORT} (PORT=${PORT})`);
+      console.log(`Allowed CORS origins:`, allowedOrigins);
     });
   }
 
