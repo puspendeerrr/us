@@ -1,0 +1,111 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Exactly two authenticated users in the relationship
+model User {
+  id           String    @id @default(cuid())
+  identifier   String    @unique // username or email identifier
+  passwordHash String
+  displayName  String
+  avatarUrl    String?
+  role         String    @default("partner") // "partner_a" | "partner_b"
+  lastSeenAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions     Session[]
+  notes        Note[]
+  revisions    NoteRevision[]
+
+  @@map("users")
+}
+
+// Server-side session management
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@map("sessions")
+}
+
+// Canonical relationship epoch and shared settings (Singleton)
+model RelationshipSettings {
+  id           String    @id @default("singleton")
+  startAt      DateTime? // Canonical UTC timestamp configured by user
+  date         String?   // YYYY-MM-DD format
+  time         String?   // HH:mm format
+  timezone     String    @default("UTC")
+  title        String    @default("Our Space")
+  partnerAName String?
+  partnerBName String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("relationship_settings")
+}
+
+enum NoteVisibility {
+  SHARED
+  PRIVATE
+}
+
+model Note {
+  id         String         @id @default(cuid())
+  title      String
+  content    String         @db.Text
+  visibility NoteVisibility @default(PRIVATE)
+  pinned     Boolean        @default(false)
+  ownerId    String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  owner     User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  revisions NoteRevision[]
+  tags      Tag[]          @relation("NoteTags")
+
+  @@index([ownerId])
+  @@index([visibility])
+  @@index([pinned, updatedAt])
+  @@map("notes")
+}
+
+model NoteRevision {
+  id         String         @id @default(cuid())
+  noteId     String
+  title      String
+  content    String         @db.Text
+  visibility NoteVisibility
+  authorId   String
+  createdAt  DateTime       @default(now())
+
+  note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([createdAt])
+  @@map("note_revisions")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  notes Note[] @relation("NoteTags")
+
+  @@map("tags")
+}
+
