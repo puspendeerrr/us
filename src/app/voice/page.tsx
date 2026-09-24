@@ -3,8 +3,12 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { Mic } from 'lucide-react';
+import { VoiceMemoriesClient } from '@/components/voice/voice-memories-client';
+
+export const metadata = {
+  title: 'Voice Memories | Our Space',
+  description: 'Private spoken voice notes and audio memories.',
+};
 
 export default async function VoicePage() {
   const { user, partner } = await getAuthenticatedContext();
@@ -14,14 +18,10 @@ export default async function VoicePage() {
       <PageContainer>
         <PageHeader
           title="Voice Memories"
-          description="Private spoken notes and voice messages."
+          description="Spoken memories, intimate voice notes, and audio clips."
         />
         <PageContent>
-          <EmptyState
-            icon={Mic}
-            title="No voice memories yet"
-            description="Recorded voice audio and spoken memories will appear here."
-          />
+          <VoiceMemoriesClient currentUserId={user.id} />
         </PageContent>
       </PageContainer>
     </AppShell>

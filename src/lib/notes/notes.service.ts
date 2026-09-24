@@ -252,7 +252,7 @@ export async function createNote(
       owner: note.owner,
       revisionCount: 1,
     };
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 }
 
 /**
@@ -360,7 +360,7 @@ export async function updateNote(
       owner: updated.owner,
       revisionCount,
     };
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 }
 
 /**

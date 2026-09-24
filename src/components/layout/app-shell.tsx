@@ -75,10 +75,12 @@ export function AppShell({ user, partner, children }: AppShellProps) {
     }
   };
 
+  const isChat = pathname === '/chat';
+
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
       {/* ================= DESKTOP & TABLET SIDEBAR ================= */}
-      <aside className="hidden md:flex md:w-60 lg:w-64 flex-col border-r border-border bg-card/40 shrink-0">
+      <aside className="hidden md:flex md:w-60 lg:w-64 flex-col border-r border-border bg-card/40 shrink-0 h-full">
         {/* Brand Header */}
         <div className="flex h-16 items-center justify-between px-5 border-b border-border">
           <Link
@@ -163,10 +165,19 @@ export function AppShell({ user, partner, children }: AppShellProps) {
       </aside>
 
       {/* ================= MAIN COLUMN (HEADER + CONTENT) ================= */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <AppHeader user={user} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
-        <main className="flex-1 pb-16 md:pb-6 overflow-y-auto">{children}</main>
+        <main
+          className={cn(
+            'flex-1 min-h-0',
+            isChat
+              ? 'flex flex-col overflow-hidden pb-14 md:pb-0'
+              : 'overflow-y-auto pb-16 md:pb-6'
+          )}
+        >
+          {children}
+        </main>
 
         {/* ================= MOBILE BOTTOM NAVIGATION ================= */}
         <nav

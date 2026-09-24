@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import type { SessionUser } from '@/lib/auth/session';
+import { getLatestSharedVoiceMemory } from '@/lib/voice/voice.service';
+import { formatDuration } from '@/lib/voice/voice.types';
 
 export interface DashboardData {
   nearestDate: null | {
@@ -22,9 +24,11 @@ export interface DashboardData {
     category?: string | null;
   };
   latestVoice: null | {
+    id: string;
     title: string;
     duration: number;
-    createdAt: Date;
+    formattedDuration: string;
+    authorName: string;
   };
 }
 
@@ -35,14 +39,21 @@ export interface DashboardData {
  * - Returns null for unseeded/unmigrated modules to ensure genuine empty states.
  */
 export async function getDashboardData(user: SessionUser): Promise<DashboardData> {
-  // In Phase 3, future domain models (notes, dates, bucket, mood, timeline, voice)
-  // are deliberately decoupled and have not been created yet.
-  // All fields return null to guarantee zero manufactured/fake records.
+  const latestVoiceItem = await getLatestSharedVoiceMemory();
+
   return {
     nearestDate: null,
     bucketProgress: null,
     todayMood: null,
     latestTimeline: null,
-    latestVoice: null,
+    latestVoice: latestVoiceItem
+      ? {
+          id: latestVoiceItem.id,
+          title: latestVoiceItem.title,
+          duration: latestVoiceItem.durationSeconds,
+          formattedDuration: formatDuration(latestVoiceItem.durationSeconds),
+          authorName: latestVoiceItem.owner.displayName,
+        }
+      : null,
   };
 }

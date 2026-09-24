@@ -151,8 +151,8 @@ export function DashboardWidgets({ data }: DashboardWidgetsProps) {
         <CardContent className="pt-2">
           {data.latestVoice ? (
             <div>
-              <p className="text-base font-bold text-foreground">{data.latestVoice.title}</p>
-              <p className="text-xs text-muted-foreground">{data.latestVoice.duration}s recording</p>
+              <p className="text-base font-bold text-foreground truncate">{data.latestVoice.title}</p>
+              <p className="text-xs text-muted-foreground">{data.latestVoice.formattedDuration} &bull; {data.latestVoice.authorName}</p>
             </div>
           ) : (
             <p className="text-xs text-muted-foreground py-2">No voice memories yet.</p>

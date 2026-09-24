@@ -22,6 +22,9 @@ model User {
   sessions     Session[]
   notes        Note[]
   revisions    NoteRevision[]
+  messages     ChatMessage[]
+  reactions    MessageReaction[]
+  voiceMemories VoiceMemory[]
 
   @@map("users")
 }
@@ -108,4 +111,76 @@ model Tag {
 
   @@map("tags")
 }
+
+enum ReactionType {
+  HEART
+  LAUGH
+  THUMBS_UP
+  CRY
+  ANGRY
+}
+
+model ChatMessage {
+  id        String    @id @default(cuid())
+  senderId  String
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  readAt    DateTime?
+  replyToId String?
+
+  sender    User              @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo   ChatMessage?      @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   ChatMessage[]     @relation("MessageReplies")
+  reactions MessageReaction[]
+
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([readAt])
+  @@index([replyToId])
+  @@map("chat_messages")
+}
+
+model MessageReaction {
+  id        String       @id @default(cuid())
+  messageId String
+  userId    String
+  reaction  ReactionType
+  createdAt DateTime     @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, reaction])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
+}
+
+model VoiceMemory {
+  id              String         @id @default(cuid())
+  title           String
+  description     String?        @db.Text
+  visibility      NoteVisibility @default(PRIVATE)
+  ownerId         String
+  storageKey      String         @unique
+  mimeType        String
+  sizeBytes       Int
+  durationSeconds Int
+  recordedAt      DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([visibility])
+  @@index([recordedAt])
+  @@index([createdAt])
+  @@map("voice_memories")
+}
+
+
 

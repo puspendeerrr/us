@@ -1,33 +1,26 @@
 import { getAuthenticatedContext } from '@/lib/auth/context';
 import { AppShell } from '@/components/layout/app-shell';
-import { PageContainer } from '@/components/layout/page-container';
-import { PageHeader } from '@/components/layout/page-header';
-import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { MessageSquare } from 'lucide-react';
+import { ChatView } from '@/components/chat/chat-view';
+
+export const metadata = {
+  title: 'Private Chat | Our Space',
+  description: 'Direct private messaging between partners.',
+};
 
 export default async function ChatPage() {
   const { user, partner } = await getAuthenticatedContext();
 
   return (
     <AppShell user={user} partner={partner}>
-      <PageContainer>
-        <PageHeader
-          title="Private Chat"
-          description={
-            partner
-              ? `Direct encrypted conversation with ${partner.displayName}.`
-              : 'Direct messaging between both partners.'
-          }
-        />
-        <PageContent>
-          <EmptyState
-            icon={MessageSquare}
-            title="No messages yet"
-            description="Your private conversation history will appear here once messaging begins."
-          />
-        </PageContent>
-      </PageContainer>
+      <div className="flex-1 min-h-0 h-full flex flex-col p-2 sm:p-4 lg:p-6 overflow-hidden">
+        {partner ? (
+          <ChatView currentUser={user} partner={partner} />
+        ) : (
+          <div className="p-4 rounded-md border text-sm text-muted-foreground m-auto">
+            Partner account not found. Please complete relationship setup first.
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/setup',
   '/api/auth/setup-status',
+  '/api/voice/stream',
 ];
 const STATIC_PREFIXES = ['/_next', '/favicon.ico', '/public'];
 
