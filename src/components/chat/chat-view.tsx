@@ -6,7 +6,7 @@ import {
   RepliedMessageSummary,
   ReactionType,
 } from '@/lib/chat/chat.types';
-import { getSocketClient } from '@/lib/chat/socket-client';
+import { getSocketClient, getSocketUrl } from '@/lib/chat/socket-client';
 import { ChatMessageItemComponent } from './chat-message-item';
 import { ChatComposer } from './chat-composer';
 import { ChatSearchDialog } from './chat-search-dialog';
@@ -134,119 +134,205 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
     }
   };
 
-  // Socket.IO Setup
+  // Real-time Socket.IO + Smart Vercel Sync Setup
   useEffect(() => {
     loadInitialMessages();
 
-    const socket = getSocketClient();
-    socket.connect();
+    const socketUrl = getSocketUrl();
+    const isSocketAvailable = Boolean(socketUrl);
+    const socket = isSocketAvailable ? getSocketClient() : null;
 
-    const onConnect = () => {
-      setConnectionState('connected');
-    };
+    if (socket) {
+      socket.connect();
 
-    const onDisconnect = () => {
-      setConnectionState('disconnected');
-    };
+      const onConnect = () => {
+        setConnectionState('connected');
+      };
 
-    const onConnectError = () => {
-      setConnectionState('disconnected');
-    };
+      const onDisconnect = () => {
+        setConnectionState('disconnected');
+      };
 
-    // Incoming new message
-    const onNewMessage = (newMsg: ChatMessageItem) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
+      const onConnectError = () => {
+        setConnectionState('disconnected');
+      };
 
-      // Clear typing indicator on message receive
-      if (newMsg.senderId === partner.id) {
-        setPartnerIsTyping(false);
-        // Automatically mark read if chat is open
-        socket.emit('message:read', { messageIds: [newMsg.id] });
-      }
+      // Incoming new message
+      const onNewMessage = (newMsg: ChatMessageItem) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
 
-      if (isNearBottomRef.current || newMsg.senderId === currentUser.id) {
-        setTimeout(() => scrollToBottom(true), 50);
-      }
-    };
-
-    // Read receipt update
-    const onReadReceipt = (data: { readerId: string; messageIds?: string[]; readAt: string }) => {
-      if (data.readerId === partner.id) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.isMine && (!data.messageIds || data.messageIds.includes(msg.id))) {
-              return { ...msg, isRead: true, readAt: data.readAt };
-            }
-            return msg;
-          })
-        );
-      }
-    };
-
-    // Reaction update
-    const onReactionUpdated = (updatedMsg: ChatMessageItem) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m))
-      );
-    };
-
-    // Deleted message update
-    const onMessageDeleted = (deletedMsg: ChatMessageItem) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === deletedMsg.id ? deletedMsg : m))
-      );
-    };
-
-    // Partner typing events
-    const onTypingStart = (data: { userId: string }) => {
-      if (data.userId === partner.id) {
-        setPartnerIsTyping(true);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
+        // Clear typing indicator on message receive
+        if (newMsg.senderId === partner.id) {
           setPartnerIsTyping(false);
-        }, 3000);
+          // Automatically mark read if chat is open
+          socket.emit('message:read', { messageIds: [newMsg.id] });
+        }
+
+        if (isNearBottomRef.current || newMsg.senderId === currentUser.id) {
+          setTimeout(() => scrollToBottom(true), 50);
+        }
+      };
+
+      // Read receipt update
+      const onReadReceipt = (data: { readerId: string; messageIds?: string[]; readAt: string }) => {
+        if (data.readerId === partner.id) {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.isMine && (!data.messageIds || data.messageIds.includes(msg.id))) {
+                return { ...msg, isRead: true, readAt: data.readAt };
+              }
+              return msg;
+            })
+          );
+        }
+      };
+
+      // Reaction update
+      const onReactionUpdated = (updatedMsg: ChatMessageItem) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m))
+        );
+      };
+
+      // Deleted message update
+      const onMessageDeleted = (deletedMsg: ChatMessageItem) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === deletedMsg.id ? deletedMsg : m))
+        );
+      };
+
+      // Partner typing events
+      const onTypingStart = (data: { userId: string }) => {
+        if (data.userId === partner.id) {
+          setPartnerIsTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => {
+            setPartnerIsTyping(false);
+          }, 3000);
+        }
+      };
+
+      const onTypingStop = (data: { userId: string }) => {
+        if (data.userId === partner.id) {
+          setPartnerIsTyping(false);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        }
+      };
+
+      socket.on('connect', onConnect);
+      socket.on('disconnect', onDisconnect);
+      socket.on('connect_error', onConnectError);
+      socket.on('message:new', onNewMessage);
+      socket.on('message:read_receipt', onReadReceipt);
+      socket.on('message:reaction_updated', onReactionUpdated);
+      socket.on('message:deleted', onMessageDeleted);
+      socket.on('typing:start', onTypingStart);
+      socket.on('typing:stop', onTypingStop);
+    } else {
+      // In standalone Vercel mode, show connected state for live sync
+      setConnectionState('connected');
+    }
+
+    // Smart background sync polling (active on Vercel or when socket is offline)
+    const syncLatest = async () => {
+      // If actively connected to WebSocket, let socket push events
+      if (socket?.connected) return;
+      // Pause polling if tab is backgrounded
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+
+      try {
+        const res = await fetch('/api/chat/messages?limit=30');
+        if (!res.ok) return;
+        const data = await res.json();
+        const incoming: ChatMessageItem[] = data.messages || [];
+
+        setMessages((prev) => {
+          if (prev.length === 0) return incoming;
+
+          const prevMap = new Map(prev.map((m) => [m.id, m]));
+          let hasChanges = false;
+          const merged = [...prev];
+
+          for (const inc of incoming) {
+            const existing = prevMap.get(inc.id);
+            if (!existing) {
+              merged.push(inc);
+              hasChanges = true;
+            } else if (
+              existing.content !== inc.content ||
+              existing.isDeleted !== inc.isDeleted ||
+              existing.isRead !== inc.isRead ||
+              JSON.stringify(existing.reactions) !== JSON.stringify(inc.reactions)
+            ) {
+              const idx = merged.findIndex((m) => m.id === inc.id);
+              if (idx !== -1) {
+                merged[idx] = inc;
+                hasChanges = true;
+              }
+            }
+          }
+
+          if (hasChanges && isNearBottomRef.current) {
+            setTimeout(() => scrollToBottom(true), 50);
+          }
+
+          return hasChanges ? merged : prev;
+        });
+
+        // Mark incoming unread messages as read
+        const unreadIncoming = incoming
+          .filter((m) => !m.isMine && !m.isRead)
+          .map((m) => m.id);
+
+        if (unreadIncoming.length > 0) {
+          fetch('/api/chat/messages/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messageIds: unreadIncoming }),
+          }).catch(() => null);
+        }
+      } catch {
+        // Silently catch background poll network errors
       }
     };
 
-    const onTypingStop = (data: { userId: string }) => {
-      if (data.userId === partner.id) {
-        setPartnerIsTyping(false);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    // Auto-sync every 3 seconds for near-instant message delivery on Vercel
+    const pollInterval = setInterval(syncLatest, 3000);
+
+    // Sync immediately when tab regains focus
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncLatest();
       }
     };
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('connect_error', onConnectError);
-    socket.on('message:new', onNewMessage);
-    socket.on('message:read_receipt', onReadReceipt);
-    socket.on('message:reaction_updated', onReactionUpdated);
-    socket.on('message:deleted', onMessageDeleted);
-    socket.on('typing:start', onTypingStart);
-    socket.on('typing:stop', onTypingStop);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('connect_error', onConnectError);
-      socket.off('message:new', onNewMessage);
-      socket.off('message:read_receipt', onReadReceipt);
-      socket.off('message:reaction_updated', onReactionUpdated);
-      socket.off('message:deleted', onMessageDeleted);
-      socket.off('typing:start', onTypingStart);
-      socket.off('typing:stop', onTypingStop);
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (socket) {
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('connect_error');
+        socket.off('message:new');
+        socket.off('message:read_receipt');
+        socket.off('message:reaction_updated');
+        socket.off('message:deleted');
+        socket.off('typing:start');
+        socket.off('typing:stop');
+      }
     };
   }, [currentUser.id, partner.id, loadInitialMessages, scrollToBottom]);
 
   // Send message handler (Socket.IO with REST fallback)
   const handleSendMessage = async (content: string, replyToId?: string): Promise<boolean> => {
-    const socket = getSocketClient();
+    const socket = getSocketUrl() ? getSocketClient() : null;
 
     // Try Socket.IO if connected
-    if (socket.connected) {
+    if (socket && socket.connected) {
       return new Promise<boolean>((resolve) => {
         socket.emit('message:send', { content, replyToId }, (res: any) => {
           if (res && res.success) {
@@ -282,8 +368,8 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
   // Toggle reaction handler (Socket.IO + REST fallback)
   const handleToggleReaction = async (messageId: string, reaction: ReactionType) => {
-    const socket = getSocketClient();
-    if (socket.connected) {
+    const socket = getSocketUrl() ? getSocketClient() : null;
+    if (socket && socket.connected) {
       socket.emit('message:react', { messageId, reaction });
       return;
     }
@@ -307,8 +393,8 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
   // Delete message handler
   const handleDeleteMessage = async (messageId: string) => {
-    const socket = getSocketClient();
-    if (socket.connected) {
+    const socket = getSocketUrl() ? getSocketClient() : null;
+    if (socket && socket.connected) {
       socket.emit('message:delete', { messageId });
       return;
     }
@@ -330,15 +416,15 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
   // Typing event emitters
   const handleStartTyping = () => {
-    const socket = getSocketClient();
-    if (socket.connected) {
+    const socket = getSocketUrl() ? getSocketClient() : null;
+    if (socket && socket.connected) {
       socket.emit('typing:start');
     }
   };
 
   const handleStopTyping = () => {
-    const socket = getSocketClient();
-    if (socket.connected) {
+    const socket = getSocketUrl() ? getSocketClient() : null;
+    if (socket && socket.connected) {
       socket.emit('typing:stop');
     }
   };
@@ -382,7 +468,9 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
               />
               <span>
                 {connectionState === 'connected'
-                  ? 'Real-time connected'
+                  ? getSocketUrl()
+                    ? 'Real-time connected'
+                    : 'Live sync active'
                   : connectionState === 'connecting'
                   ? 'Connecting...'
                   : 'Offline (REST mode)'}
