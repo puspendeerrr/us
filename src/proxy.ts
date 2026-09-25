@@ -5,6 +5,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/setup',
   '/api/auth/login',
+  '/api/auth/logout',
   '/api/auth/setup',
   '/api/auth/setup-status',
   '/api/voice/stream',
@@ -22,11 +23,11 @@ export function proxy(request: NextRequest) {
   const sessionToken = request.cookies.get('our_space_session')?.value;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
-  // Allow root / to be handled by app/page.tsx with database-backed routing
-
-  // If user is already authenticated and visits login page, redirect to /home
-  if (sessionToken && pathname === '/login') {
-    return NextResponse.redirect(new URL('/home', request.url));
+  // When visiting login page with leftover cookie, clear it
+  if (pathname === '/login' && sessionToken) {
+    const response = NextResponse.next();
+    response.cookies.delete('our_space_session');
+    return response;
   }
 
   // If user is not authenticated and attempts to access protected routes
@@ -38,10 +39,22 @@ export function proxy(request: NextRequest) {
     // Otherwise redirect to login
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirectRes = NextResponse.redirect(loginUrl);
+    redirectRes.cookies.delete('our_space_session');
+    redirectRes.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    return redirectRes;
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  // Strict privacy: Prevent browser caching of any protected pages or authenticated API responses
+  if (!isPublicPath) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+  }
+
+  return response;
 }
 
 export const config = {

@@ -79,6 +79,34 @@ export function AppShell({ user, partner, children }: AppShellProps) {
   const isChat = pathname === '/chat';
   const { isKeyboardOpen } = useVisualViewport();
 
+  // Strict privacy policy: BFCache (back-forward cache) and reload validation listener
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Detect browser reload event on client-side
+    const navEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+    if (navEntries.length > 0 && navEntries[0].type === 'reload') {
+      fetch('/api/auth/logout', { method: 'POST' }).finally(() => {
+        router.replace('/login');
+      });
+      return;
+    }
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page was restored from back/forward cache: revalidate session with server
+        fetch('/api/auth/me').then((res) => {
+          if (!res.ok) {
+            router.replace('/login');
+          }
+        });
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [router]);
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
       {/* ================= DESKTOP & TABLET SIDEBAR ================= */}

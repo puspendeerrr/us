@@ -24,6 +24,24 @@ export function getIO(): SocketIOServer | null {
 }
 
 /**
+ * Immediately terminates all active Socket.IO connections for a user on logout/invalidation.
+ */
+export function disconnectUserSockets(userId: string): void {
+  const socketIds = userSockets.get(userId);
+  if (!socketIds || socketIds.size === 0) return;
+  const io = getIO();
+  if (!io) return;
+
+  for (const socketId of Array.from(socketIds)) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.disconnect(true);
+    }
+  }
+  userSockets.delete(userId);
+}
+
+/**
  * Derives explicit allowed CORS origins from environment and defaults.
  * Wildcard ('*') is strictly disallowed since credentials/cookies are required.
  */

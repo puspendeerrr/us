@@ -7,7 +7,9 @@ export async function GET() {
     const user = await getCurrentUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const res = NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      return res;
     }
 
     // Resolve partner in the dual-user relationship
@@ -25,10 +27,12 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user,
       partner: partner ?? null,
     });
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    return res;
   } catch (error) {
     console.error('Session retrieval error:', error);
     return NextResponse.json(

@@ -1,9 +1,11 @@
 import { randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import { prisma } from '@/lib/prisma';
 
 export const SESSION_COOKIE_NAME = 'our_space_session';
-export const SESSION_DURATION_DAYS = 30;
+// Privacy-first session lifetime: 2 hours max lifetime instead of 30 days
+export const SESSION_DURATION_HOURS = 2;
 
 export interface SessionUser {
   id: string;
@@ -22,11 +24,11 @@ export function generateSessionToken(): string {
 }
 
 /**
- * Creates a database session record for the given user.
+ * Creates a database session record for the given user with privacy-oriented expiration.
  */
 export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
   const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000);
 
   await prisma.session.create({
     data: {
@@ -40,10 +42,10 @@ export async function createSession(userId: string): Promise<{ token: string; ex
 }
 
 /**
- * Validates a session token against the database and returns the authenticated user if valid.
+ * Fetches the full session database record.
  */
-export async function validateSessionToken(token: string): Promise<SessionUser | null> {
-  const session = await prisma.session.findUnique({
+export async function getSessionRecord(token: string) {
+  return await prisma.session.findUnique({
     where: { sessionToken: token },
     include: {
       user: {
@@ -58,6 +60,13 @@ export async function validateSessionToken(token: string): Promise<SessionUser |
       },
     },
   });
+}
+
+/**
+ * Validates a session token against the database and returns the authenticated user if valid.
+ */
+export async function validateSessionToken(token: string): Promise<SessionUser | null> {
+  const session = await getSessionRecord(token);
 
   if (!session) {
     return null;
@@ -65,14 +74,12 @@ export async function validateSessionToken(token: string): Promise<SessionUser |
 
   // Check if session has expired
   if (Date.now() >= session.expiresAt.getTime()) {
-    await prisma.session.delete({ where: { sessionToken: token } }).catch(() => null);
+    await prisma.session.deleteMany({ where: { sessionToken: token } }).catch(() => null);
     return null;
   }
 
   return session.user;
 }
-
-import { cache } from 'react';
 
 /**
  * Retrieves the currently authenticated user from the HTTP-only cookie.
@@ -91,10 +98,10 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
 /**
  * Sets the session cookie in HTTP-only mode.
- * Supports configurable COOKIE_DOMAIN for cross-subdomain architecture (e.g. .puspender.in)
- * and secure SameSite defaults.
+ * Privacy-focused: Does not set a 30-day persistent expiration, allowing browsers/PWAs
+ * to discard the session cookie when the application is closed.
  */
-export async function setSessionCookie(token: string, expiresAt: Date): Promise<void> {
+export async function setSessionCookie(token: string, expiresAt?: Date): Promise<void> {
   const cookieStore = await cookies();
   const isProduction = process.env.NODE_ENV === 'production';
   const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
@@ -106,12 +113,34 @@ export async function setSessionCookie(token: string, expiresAt: Date): Promise<
     sameSite: sameSite,
     domain: cookieDomain,
     path: '/',
-    expires: expiresAt,
+    maxAge: SESSION_DURATION_HOURS * 3600,
   });
 }
 
 /**
- * Invalidates the current session from both the database and the cookie.
+ * Invalidates a specific session by token directly from the database and terminates Socket.IO connections.
+ */
+export async function invalidateSessionToken(token: string): Promise<void> {
+  const session = await prisma.session.findUnique({
+    where: { sessionToken: token },
+    select: { userId: true },
+  }).catch(() => null);
+
+  await prisma.session.deleteMany({ where: { sessionToken: token } }).catch(() => null);
+
+  if (session?.userId) {
+    try {
+      const { disconnectUserSockets } = await import('@/server/socket-server');
+      disconnectUserSockets(session.userId);
+    } catch {
+      // In case socket server is standalone
+    }
+  }
+}
+
+/**
+ * Invalidates the current session from both the database and the cookie, disconnecting active sockets.
+ * Fully idempotent.
  */
 export async function invalidateCurrentSession(): Promise<void> {
   const cookieStore = await cookies();
@@ -119,11 +148,17 @@ export async function invalidateCurrentSession(): Promise<void> {
   const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
   if (token) {
-    await prisma.session.delete({ where: { sessionToken: token } }).catch(() => null);
+    await invalidateSessionToken(token);
+  }
+
+  try {
     cookieStore.delete({
       name: SESSION_COOKIE_NAME,
       domain: cookieDomain,
       path: '/',
     });
+  } catch {
+    // In Server Components, cookies cannot be mutated directly;
+    // session is deleted in PostgreSQL and cookie is cleared on proxy/route handlers.
   }
 }
