@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { RepliedMessageSummary } from '@/lib/chat/chat.types';
 import { Send, X, CornerDownRight, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ChatComposerProps {
   replyTarget: RepliedMessageSummary | null;
@@ -12,6 +13,7 @@ interface ChatComposerProps {
   onStartTyping?: () => void;
   onStopTyping?: () => void;
   disabled?: boolean;
+  isKeyboardOpen?: boolean;
 }
 
 export function ChatComposer({
@@ -21,6 +23,7 @@ export function ChatComposer({
   onStartTyping,
   onStopTyping,
   disabled = false,
+  isKeyboardOpen = false,
 }: ChatComposerProps) {
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -33,11 +36,12 @@ export function ChatComposer({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollHeight, 40), 120)}px`;
     }
   }, [text]);
 
-  // Focus on replyTarget set
+  // Focus on textarea when replyTarget is set
   useEffect(() => {
     if (replyTarget && textareaRef.current) {
       textareaRef.current.focus();
@@ -85,7 +89,9 @@ export function ChatComposer({
           onCancelReply();
         }
         if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = '40px';
+          // Keep focus on textarea for rapid mobile messaging
+          textareaRef.current.focus();
         }
       } else {
         setErrorMessage('Failed to send message. Please try again.');
@@ -106,26 +112,36 @@ export function ChatComposer({
   };
 
   return (
-    <div className="border-t border-border bg-background p-3 space-y-2">
-      {/* Reply Banner */}
+    <div
+      className={cn(
+        'border-t border-border bg-card/95 backdrop-blur-xs px-3 pt-2 transition-all duration-150 space-y-2',
+        isKeyboardOpen
+          ? 'pb-2 sm:pb-3'
+          : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+      )}
+    >
+      {/* Reply Preview Banner */}
       {replyTarget && (
-        <div className="flex items-center justify-between gap-2 p-1.5 px-3 rounded-md bg-muted/60 text-xs border border-border/60">
-          <div className="flex items-center gap-1.5 truncate">
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-muted/80 text-xs border-l-3 border-primary shadow-2xs animate-in fade-in slide-in-from-bottom-1">
+          <div className="flex items-center gap-2 min-w-0">
             <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-primary" />
-            <span className="font-semibold text-foreground shrink-0">
-              Replying to {replyTarget.senderName}:
-            </span>
-            <span className="truncate italic text-muted-foreground">
-              {replyTarget.content}
-            </span>
+            <div className="min-w-0">
+              <span className="font-semibold text-foreground text-[11px] block truncate">
+                Replying to {replyTarget.senderName}
+              </span>
+              <p className="truncate text-muted-foreground italic text-[11px] max-w-sm sm:max-w-md">
+                &ldquo;{replyTarget.content}&rdquo;
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onCancelReply}
-            className="text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+            className="text-muted-foreground hover:text-foreground p-1 rounded-full hover:bg-muted active:scale-95 transition-all shrink-0 cursor-pointer"
             aria-label="Cancel reply"
+            title="Cancel reply"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -138,18 +154,19 @@ export function ChatComposer({
         </div>
       )}
 
-      {/* Input row */}
+      {/* Input Row */}
       <div className="flex items-end gap-2">
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+          placeholder="Type a message..."
           rows={1}
           disabled={disabled || isSending}
           maxLength={5000}
-          className="flex-1 min-h-[40px] max-h-[140px] resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          aria-label="Type a message"
+          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-xl border border-input bg-background/80 px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1.5 focus:ring-ring focus:border-ring transition-colors disabled:opacity-50 overflow-y-auto leading-normal"
         />
 
         <Button
@@ -157,7 +174,7 @@ export function ChatComposer({
           size="icon"
           onClick={handleSend}
           disabled={!text.trim() || isSending || disabled}
-          className="h-10 w-10 shrink-0"
+          className="h-10 w-10 shrink-0 rounded-xl cursor-pointer"
           title="Send message"
           aria-label="Send message"
         >

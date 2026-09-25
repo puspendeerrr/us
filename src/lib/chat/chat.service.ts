@@ -96,9 +96,17 @@ export function formatMessage(
     replyToSummary = {
       id: msg.replyTo.id,
       senderId: msg.replyTo.senderId,
-      senderName: msg.replyTo.sender.displayName,
+      senderName: msg.replyTo.sender?.displayName || 'Partner',
       content: isReplyDeleted ? 'This message was deleted' : msg.replyTo.content.slice(0, 150),
       isDeleted: isReplyDeleted,
+    };
+  } else if (msg.replyToId) {
+    replyToSummary = {
+      id: msg.replyToId,
+      senderId: '',
+      senderName: 'Message',
+      content: 'Original message unavailable',
+      isDeleted: true,
     };
   }
 

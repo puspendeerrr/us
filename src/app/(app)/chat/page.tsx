@@ -10,7 +10,7 @@ export default async function ChatPage() {
   const { user, partner } = await getAuthenticatedContext();
 
   return (
-    <div className="flex-1 min-h-0 h-full flex flex-col p-2 sm:p-4 lg:p-6 overflow-hidden">
+    <div className="flex-1 min-h-0 h-full flex flex-col p-0 sm:p-4 lg:p-6 overflow-hidden">
       {partner ? (
         <ChatView currentUser={user} partner={partner} />
       ) : (

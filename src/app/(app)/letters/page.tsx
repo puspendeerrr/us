@@ -1,21 +1,29 @@
+import { getAuthenticatedContext } from '@/lib/auth/context';
+import { listLetters } from '@/lib/letters/letters.service';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { Mail } from 'lucide-react';
+import { LettersClient } from '@/components/letters/letters-client';
 
-export default function LettersPage() {
+export default async function LettersPage() {
+  const { user, partner } = await getAuthenticatedContext();
+  const initialData = await listLetters(user.id, { tab: 'all', limit: 20 });
+
   return (
     <PageContainer>
       <PageHeader
         title="Open When Letters"
-        description="Letters sealed until specific moments or milestones occur."
+        description="Private sealed letters for your relationship that remain locked until their scheduled moment."
       />
       <PageContent>
-        <EmptyState
-          icon={Mail}
-          title="No letters yet"
-          description="Letters written for special occasions or emotional moments will appear here."
+        <LettersClient
+          initialItems={initialData.items}
+          initialTotal={initialData.total}
+          initialHasMore={initialData.hasMore}
+          initialNextCursor={initialData.nextCursor}
+          currentUserId={user.id}
+          partnerName={partner?.displayName || 'Partner'}
+          partnerId={partner?.id || ''}
         />
       </PageContent>
     </PageContainer>

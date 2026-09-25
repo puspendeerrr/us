@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ChatMessageItem,
   ReactionType,
@@ -13,7 +13,9 @@ import {
   Reply,
   Trash2,
   Smile,
+  Copy,
   CornerDownRight,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +26,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
 interface ChatMessageItemProps {
@@ -32,6 +40,7 @@ interface ChatMessageItemProps {
   onReply?: (message: ChatMessageItem) => void;
   onToggleReaction?: (messageId: string, reaction: ReactionType) => void;
   onDelete?: (messageId: string) => void;
+  onJumpToMessage?: (messageId: string) => void;
 }
 
 export function ChatMessageItemComponent({
@@ -40,9 +49,15 @@ export function ChatMessageItemComponent({
   onReply,
   onToggleReaction,
   onDelete,
+  onJumpToMessage,
 }: ChatMessageItemProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [mobileActionOpen, setMobileActionOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
   const isMine = message.senderId === currentUserId;
   const isDeleted = message.isDeleted;
@@ -61,6 +76,7 @@ export function ChatMessageItemComponent({
 
   const handleReactionClick = (reaction: ReactionType) => {
     setShowEmojiPicker(false);
+    setMobileActionOpen(false);
     if (onToggleReaction) {
       onToggleReaction(message.id, reaction);
     }
@@ -68,55 +84,134 @@ export function ChatMessageItemComponent({
 
   const confirmDelete = () => {
     setDeleteOpen(false);
+    setMobileActionOpen(false);
     if (onDelete) {
       onDelete(message.id);
     }
   };
 
+  const handleCopy = async () => {
+    if (!message.content || isDeleted) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+        setMobileActionOpen(false);
+      }, 800);
+    } catch {
+      // Fallback
+    }
+  };
+
+  // Touch handlers for mobile WhatsApp-style long-press
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isDeleted) return;
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+    longPressTimerRef.current = setTimeout(() => {
+      // Trigger mobile action sheet on long press
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.(30);
+      }
+      setMobileActionOpen(true);
+    }, 450);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPosRef.current) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      // Cancel long press if user is scrolling
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (isDeleted) return;
+    // On mobile devices or touchscreens, contextmenu acts as long-press
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+      e.preventDefault();
+      setMobileActionOpen(true);
+    }
+  };
+
   return (
     <div
+      id={`msg-${message.id}`}
       className={cn(
-        'group flex flex-col my-1 max-w-[85%] sm:max-w-[70%]',
+        'group flex flex-col my-1 max-w-[88%] sm:max-w-[70%] transition-colors duration-300 rounded-2xl',
         isMine ? 'ml-auto items-end' : 'mr-auto items-start'
       )}
     >
-      {/* Replied reference quote if present */}
-      {message.replyTo && (
-        <div
-          className={cn(
-            'flex items-center gap-1.5 text-xs text-muted-foreground mb-1 px-2 py-1 rounded bg-muted/40 border-l-2 border-primary/60 max-w-full truncate',
-            isMine ? 'mr-1' : 'ml-1'
-          )}
-        >
-          <CornerDownRight className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-          <span className="font-medium text-foreground/80 shrink-0">
-            {message.replyTo.senderName}:
-          </span>
-          <span className="truncate italic">
-            {message.replyTo.content}
-          </span>
-        </div>
-      )}
-
       {/* Main message bubble + action buttons */}
-      <div className={cn('relative flex items-center gap-1.5 group/bubble', isMine ? 'flex-row-reverse' : 'flex-row')}>
+      <div className={cn('relative flex items-center gap-1.5 group/bubble max-w-full', isMine ? 'flex-row-reverse' : 'flex-row')}>
         {/* The message bubble */}
         <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onContextMenu={handleContextMenu}
           className={cn(
-            'rounded-2xl px-3.5 py-2 text-sm shadow-xs transition-colors break-words overflow-hidden leading-relaxed',
+            'relative rounded-2xl px-3.5 py-2 text-sm shadow-xs transition-colors break-words overflow-hidden leading-relaxed max-w-full',
             isMine
               ? 'bg-primary text-primary-foreground rounded-br-xs'
               : 'bg-muted/80 text-foreground border border-border/40 rounded-bl-xs',
             isDeleted && 'italic opacity-60 text-muted-foreground bg-muted/40 border-dashed border-border'
           )}
         >
+          {/* WhatsApp-style nested reply preview INSIDE the bubble */}
+          {message.replyTo && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onJumpToMessage && message.replyTo) {
+                  onJumpToMessage(message.replyTo.id);
+                }
+              }}
+              className={cn(
+                'w-full text-left mb-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors flex flex-col gap-0.5 border-l-3 cursor-pointer select-none',
+                isMine
+                  ? 'bg-black/15 dark:bg-white/15 border-primary-foreground/80 hover:bg-black/25 dark:hover:bg-white/25 text-primary-foreground'
+                  : 'bg-primary/5 dark:bg-primary/15 border-primary hover:bg-primary/10 dark:hover:bg-primary/20 text-foreground'
+              )}
+              title="Jump to original message"
+              aria-label={`Jump to original message from ${message.replyTo.senderName}`}
+            >
+              <div className="flex items-center gap-1 font-semibold text-[11px] opacity-90 truncate">
+                <CornerDownRight className="h-3 w-3 shrink-0 opacity-70" />
+                <span className="truncate">{message.replyTo.senderName}</span>
+              </div>
+              <div className="text-[11.5px] opacity-80 truncate line-clamp-1 italic font-normal">
+                {message.replyTo.isDeleted
+                  ? 'Original message unavailable'
+                  : message.replyTo.content || 'Original message'}
+              </div>
+            </button>
+          )}
+
+          {/* Message Text Content */}
           <p className="whitespace-pre-wrap select-text">{message.content}</p>
 
           {/* Time and read status */}
           <div
             className={cn(
               'flex items-center justify-end gap-1 mt-1 text-[10px] select-none',
-              isMine ? 'text-primary-foreground/70' : 'text-muted-foreground'
+              isMine ? 'text-primary-foreground/75' : 'text-muted-foreground'
             )}
           >
             <span>{timeStr}</span>
@@ -136,11 +231,11 @@ export function ChatMessageItemComponent({
           </div>
         </div>
 
-        {/* Hover / tap actions (Reply, Reaction, Delete) */}
+        {/* Desktop / Large Screen Hover Action Bar */}
         {!isDeleted && (
           <div
             className={cn(
-              'opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center gap-0.5 p-1 rounded-md bg-background/90 border border-border shadow-xs shrink-0',
+              'opacity-0 group-hover/bubble:opacity-100 transition-opacity hidden sm:flex items-center gap-0.5 p-1 rounded-md bg-background/90 border border-border shadow-xs shrink-0',
               isMine ? 'mr-1' : 'ml-1'
             )}
           >
@@ -190,7 +285,7 @@ export function ChatMessageItemComponent({
                 onClick={() => onReply(message)}
                 className="h-6 w-6 text-muted-foreground hover:text-foreground"
                 title="Reply"
-                aria-label="Reply"
+                aria-label="Reply to message"
               >
                 <Reply className="h-3.5 w-3.5" />
               </Button>
@@ -211,6 +306,21 @@ export function ChatMessageItemComponent({
               </Button>
             )}
           </div>
+        )}
+
+        {/* Mobile three-dot trigger for fast touch access without long-press */}
+        {!isDeleted && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setMobileActionOpen(true)}
+            className="sm:hidden h-7 w-7 text-muted-foreground/60 hover:text-foreground shrink-0"
+            title="Message options"
+            aria-label="Message options"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
         )}
       </div>
 
@@ -236,6 +346,75 @@ export function ChatMessageItemComponent({
           ))}
         </div>
       )}
+
+      {/* Mobile WhatsApp-style Action Bottom Sheet */}
+      <Sheet open={mobileActionOpen} onOpenChange={setMobileActionOpen}>
+        <SheetContent side="bottom" className="p-4 rounded-t-2xl sm:hidden">
+          <SheetHeader className="text-left pb-2 border-b border-border">
+            <SheetTitle className="text-sm font-semibold truncate">
+              {message.senderName}
+            </SheetTitle>
+            <p className="text-xs text-muted-foreground truncate line-clamp-1 italic">
+              {message.content}
+            </p>
+          </SheetHeader>
+
+          {/* Quick Reaction Row */}
+          <div className="flex items-center justify-around py-3 border-b border-border">
+            {ALLOWED_REACTIONS.map((reaction) => (
+              <button
+                key={reaction}
+                type="button"
+                onClick={() => handleReactionClick(reaction)}
+                className="h-10 w-10 flex items-center justify-center text-xl hover:scale-125 transition-transform rounded-full hover:bg-muted active:scale-95"
+                title={reaction}
+              >
+                {REACTION_TO_EMOJI[reaction]}
+              </button>
+            ))}
+          </div>
+
+          {/* Action List */}
+          <div className="py-2 space-y-1">
+            {onReply && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionOpen(false);
+                  onReply(message);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-muted transition-colors text-left"
+              >
+                <Reply className="h-4 w-4 text-primary" />
+                <span>Reply</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-muted transition-colors text-left"
+            >
+              <Copy className="h-4 w-4 text-muted-foreground" />
+              <span>{copied ? 'Copied to clipboard!' : 'Copy message'}</span>
+            </button>
+
+            {isMine && onDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionOpen(false);
+                  setDeleteOpen(true);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-destructive/10 text-destructive transition-colors text-left"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>Delete message</span>
+              </button>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

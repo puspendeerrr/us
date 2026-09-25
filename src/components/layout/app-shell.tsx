@@ -27,6 +27,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { AppHeader } from '@/components/layout/app-header';
+import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import type { SessionUser } from '@/lib/auth/session';
 
 interface AppShellProps {
@@ -76,6 +77,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
   };
 
   const isChat = pathname === '/chat';
+  const { isKeyboardOpen } = useVisualViewport();
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
@@ -174,7 +176,7 @@ export function AppShell({ user, partner, children }: AppShellProps) {
           className={cn(
             'flex-1 min-h-0',
             isChat
-              ? 'flex flex-col overflow-hidden pb-14 md:pb-0'
+              ? 'flex flex-col overflow-hidden'
               : 'overflow-y-auto pb-16 md:pb-6'
           )}
         >
@@ -184,7 +186,12 @@ export function AppShell({ user, partner, children }: AppShellProps) {
         {/* ================= MOBILE BOTTOM NAVIGATION ================= */}
         <nav
           aria-label="Mobile primary navigation"
-          className="md:hidden fixed bottom-0 left-0 right-0 h-14 border-t border-border bg-card/95 backdrop-blur-md flex items-center justify-around px-2 z-20"
+          className={cn(
+            'border-t border-border bg-card/95 backdrop-blur-md items-center justify-around px-2 z-20',
+            isChat
+              ? cn('chat-bottom-nav shrink-0 h-14 md:hidden flex', isKeyboardOpen ? 'hidden' : 'flex')
+              : 'md:hidden fixed bottom-0 left-0 right-0 h-14 flex'
+          )}
         >
           <Link
             href="/home"

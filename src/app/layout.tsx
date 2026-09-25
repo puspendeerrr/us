@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
@@ -12,6 +12,15 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Our Space — Private Sanctuary',
   description: 'A private relationship space for two partners.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({

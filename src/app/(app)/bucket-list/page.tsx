@@ -1,21 +1,25 @@
+import { getAuthenticatedContext } from '@/lib/auth/context';
+import { listBucketItems } from '@/lib/bucket-list/bucket-list.service';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { CheckSquare } from 'lucide-react';
+import { BucketClient } from '@/components/bucket-list/bucket-client';
 
-export default function BucketListPage() {
+export default async function BucketListPage() {
+  const { user } = await getAuthenticatedContext();
+  const initialData = await listBucketItems(user.id, { status: 'all', limit: 50 });
+
   return (
     <PageContainer>
       <PageHeader
         title="Bucket List"
-        description="Shared dreams, travel plans, and experiences to accomplish together."
+        description="Things we want to do together."
       />
       <PageContent>
-        <EmptyState
-          icon={CheckSquare}
-          title="Your bucket list is empty"
-          description="Add adventures, places to visit, foods to try, and shared life goals."
+        <BucketClient
+          initialItems={initialData.items}
+          initialProgress={initialData.progress}
+          currentUserId={user.id}
         />
       </PageContent>
     </PageContainer>

@@ -1,21 +1,25 @@
+import { getAuthenticatedContext } from '@/lib/auth/context';
+import { listImportantDates } from '@/lib/dates/dates.service';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { Calendar } from 'lucide-react';
+import { DatesClient } from '@/components/dates/dates-client';
 
-export default function DatesPage() {
+export default async function DatesPage() {
+  const { user } = await getAuthenticatedContext();
+  const initialData = await listImportantDates(user.id, { tab: 'all', limit: 50 });
+
   return (
     <PageContainer>
       <PageHeader
         title="Important Dates"
-        description="Anniversaries, birthdays, and relationship countdowns."
+        description="Relationship milestones, anniversaries, birthdays, and upcoming countdowns."
       />
       <PageContent>
-        <EmptyState
-          icon={Calendar}
-          title="No important dates yet"
-          description="Your tracked dates, celebrations, and countdowns will appear here once saved."
+        <DatesClient
+          initialItems={initialData.items}
+          initialTotal={initialData.total}
+          currentUserId={user.id}
         />
       </PageContent>
     </PageContainer>

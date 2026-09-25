@@ -17,10 +17,9 @@ import {
   MessageSquare,
   ChevronUp,
   Loader2,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { formatLastSeen } from '@/lib/chat/presence';
+import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { cn } from '@/lib/utils';
 
 interface ChatViewProps {
@@ -48,11 +47,26 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+  const [, setConnectionState] = useState<ConnectionState>('connecting');
 
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
   const [replyTarget, setReplyTarget] = useState<RepliedMessageSummary | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [jumpNotice, setJumpNotice] = useState<string | null>(null);
+
+  const { isKeyboardOpen } = useVisualViewport();
+
+  // Scoped body scroll lock for chat page
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('chat-page-active');
+      document.body.classList.add('chat-page-active');
+      return () => {
+        document.documentElement.classList.remove('chat-page-active');
+        document.body.classList.remove('chat-page-active');
+      };
+    }
+  }, []);
 
   // Real partner presence state
   const [partnerPresence, setPartnerPresence] = useState<{
@@ -89,6 +103,29 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
       top: scrollContainerRef.current.scrollHeight,
       behavior: smooth ? 'smooth' : 'auto',
     });
+  }, []);
+
+  // When keyboard opens, keep viewport pinned to bottom if user was near bottom
+  useEffect(() => {
+    if (isKeyboardOpen && isNearBottomRef.current) {
+      setTimeout(() => scrollToBottom(false), 50);
+      setTimeout(() => scrollToBottom(false), 200);
+    }
+  }, [isKeyboardOpen, scrollToBottom]);
+
+  // Jump to and highlight a referenced message
+  const handleJumpToMessage = useCallback((messageId: string) => {
+    const el = document.getElementById(`msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-pulse');
+      setTimeout(() => {
+        el.classList.remove('highlight-pulse');
+      }, 1800);
+    } else {
+      setJumpNotice('Original message is further up in older history');
+      setTimeout(() => setJumpNotice(null), 3000);
+    }
   }, []);
 
   // Fetch initial messages
@@ -211,19 +248,24 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
 
       // Incoming new message
       const onNewMessage = (newMsg: ChatMessageItem) => {
+        const item: ChatMessageItem = {
+          ...newMsg,
+          isMine: newMsg.senderId === currentUser.id,
+        };
+
         setMessages((prev) => {
-          if (prev.some((m) => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
+          if (prev.some((m) => m.id === item.id)) return prev;
+          return [...prev, item];
         });
 
         // Clear typing indicator on message receive
-        if (newMsg.senderId === partner.id) {
+        if (item.senderId === partner.id) {
           setPartnerIsTyping(false);
           // Automatically mark read if chat is open
-          socket.emit('message:read', { messageIds: [newMsg.id] });
+          socket.emit('message:read', { messageIds: [item.id] });
         }
 
-        if (isNearBottomRef.current || newMsg.senderId === currentUser.id) {
+        if (isNearBottomRef.current || item.senderId === currentUser.id) {
           setTimeout(() => scrollToBottom(true), 50);
         }
       };
@@ -245,14 +287,14 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
       // Reaction update
       const onReactionUpdated = (updatedMsg: ChatMessageItem) => {
         setMessages((prev) =>
-          prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m))
+          prev.map((m) => (m.id === updatedMsg.id ? { ...updatedMsg, isMine: updatedMsg.senderId === currentUser.id } : m))
         );
       };
 
       // Deleted message update
       const onMessageDeleted = (deletedMsg: ChatMessageItem) => {
         setMessages((prev) =>
-          prev.map((m) => (m.id === deletedMsg.id ? deletedMsg : m))
+          prev.map((m) => (m.id === deletedMsg.id ? { ...deletedMsg, isMine: deletedMsg.senderId === currentUser.id } : m))
         );
       };
 
@@ -512,11 +554,18 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
   };
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 w-full max-w-5xl mx-auto rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+    <div className="relative flex flex-col min-h-0 flex-1 w-full max-w-5xl mx-auto rounded-none sm:rounded-xl border-x-0 sm:border border-y-0 sm:border-y border-border bg-card shadow-xs overflow-hidden h-full chat-viewport-height">
+      {/* Toast Notice for jump action */}
+      {jumpNotice && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-foreground/90 text-background text-xs shadow-md animate-in fade-in slide-in-from-top-2 pointer-events-none">
+          {jumpNotice}
+        </div>
+      )}
+
       {/* Chat Header */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-card/60 backdrop-blur-xs">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
+      <div className="shrink-0 flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-border bg-card/80 backdrop-blur-xs z-10">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
             <AvatarImage src={partner.avatarUrl || ''} alt={partner.displayName} />
             <AvatarFallback className="text-xs font-semibold">
               {partner.displayName.slice(0, 2).toUpperCase()}
@@ -545,7 +594,7 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
             variant="ghost"
             size="sm"
             onClick={() => setSearchOpen(true)}
-            className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             title="Search messages"
           >
             <Search className="h-3.5 w-3.5" />
@@ -558,7 +607,7 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-2 select-text chat-messages flex flex-col"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-2 select-text chat-messages flex flex-col overscroll-contain"
       >
         {/* Load older messages button */}
         {hasMore && (
@@ -610,6 +659,7 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
               onReply={handleReplyToMessage}
               onToggleReaction={handleToggleReaction}
               onDelete={handleDeleteMessage}
+              onJumpToMessage={handleJumpToMessage}
             />
           ))
         )}
@@ -635,6 +685,7 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
           onSendMessage={handleSendMessage}
           onStartTyping={handleStartTyping}
           onStopTyping={handleStopTyping}
+          isKeyboardOpen={isKeyboardOpen}
         />
       </div>
 
@@ -643,11 +694,7 @@ export function ChatView({ currentUser, partner }: ChatViewProps) {
         open={searchOpen}
         onOpenChange={setSearchOpen}
         onSelectMessage={(msgId) => {
-          // Find message element if in DOM and scroll
-          const el = document.getElementById(`msg-${msgId}`);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+          handleJumpToMessage(msgId);
         }}
       />
     </div>

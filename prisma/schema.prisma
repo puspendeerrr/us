@@ -25,6 +25,12 @@ model User {
   messages     ChatMessage[]
   reactions    MessageReaction[]
   voiceMemories VoiceMemory[]
+  authoredLetters OpenWhenLetter[] @relation("AuthoredLetters")
+  receivedLetters OpenWhenLetter[] @relation("ReceivedLetters")
+  importantDates  ImportantDate[]
+  bucketItems     BucketItem[]
+  moodEntries     MoodEntry[]
+  timelineEvents  TimelineEvent[]
 
   @@map("users")
 }
@@ -182,5 +188,146 @@ model VoiceMemory {
   @@map("voice_memories")
 }
 
+model OpenWhenLetter {
+  id          String    @id @default(cuid())
+  authorId    String
+  recipientId String
+  title       String
+  content     String    @db.Text
+  unlockAt    DateTime
+  openedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
+  author    User @relation("AuthoredLetters", fields: [authorId], references: [id], onDelete: Cascade)
+  recipient User @relation("ReceivedLetters", fields: [recipientId], references: [id], onDelete: Cascade)
 
+  @@index([authorId])
+  @@index([recipientId])
+  @@index([unlockAt])
+  @@index([openedAt])
+  @@map("open_when_letters")
+}
+
+enum DateCategory {
+  ANNIVERSARY
+  BIRTHDAY
+  FIRST_MEET
+  FIRST_CALL
+  FIRST_DATE
+  TRIP
+  CUSTOM
+}
+
+model ImportantDate {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?      @db.Text
+  date           DateTime
+  category       DateCategory
+  recursAnnually Boolean      @default(false)
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([date])
+  @@index([category])
+  @@map("important_dates")
+}
+
+enum BucketCategory {
+  TRAVEL
+  FOOD
+  EXPERIENCES
+  MOVIES
+  LEARNING
+  ADVENTURE
+  PERSONAL
+  CUSTOM
+}
+
+model BucketItem {
+  id          String         @id @default(cuid())
+  title       String
+  description String?        @db.Text
+  category    BucketCategory
+  isCompleted Boolean        @default(false)
+  completedAt DateTime?
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([category])
+  @@index([isCompleted])
+  @@index([createdAt])
+  @@map("bucket_items")
+}
+
+enum MoodType {
+  LOVED
+  HAPPY
+  NORMAL
+  MISSING_YOU
+  ANGRY_FRUSTRATED
+  EMOTIONAL
+  TIRED_DRAINED
+}
+
+enum MoodVisibility {
+  SHARED
+  PRIVATE
+}
+
+model MoodEntry {
+  id          String         @id @default(cuid())
+  mood        MoodType
+  note        String?        @db.Text
+  date        DateTime
+  visibility  MoodVisibility
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([date])
+  @@index([mood])
+  @@index([visibility])
+  @@index([createdAt])
+  @@map("mood_entries")
+}
+
+enum TimelineCategory {
+  BEGINNING
+  MILESTONE
+  TRIP
+  MEMORY
+  ACHIEVEMENT
+  CUSTOM
+}
+
+model TimelineEvent {
+  id          String           @id @default(cuid())
+  title       String
+  description String?          @db.Text
+  date        DateTime
+  category    TimelineCategory
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  createdBy   User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([date])
+  @@index([category])
+  @@index([createdAt])
+  @@map("timeline_events")
+}

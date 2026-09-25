@@ -1,10 +1,14 @@
+import { getAuthenticatedContext } from '@/lib/auth/context';
+import { listMoodEntries } from '@/lib/moods/mood.service';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { Smile } from 'lucide-react';
+import { MoodClient } from '@/components/mood/mood-client';
 
-export default function MoodPage() {
+export default async function MoodPage() {
+  const { user } = await getAuthenticatedContext();
+  const initialData = await listMoodEntries(user.id, { limit: 50 });
+
   return (
     <PageContainer>
       <PageHeader
@@ -12,10 +16,10 @@ export default function MoodPage() {
         description="Daily emotional check-ins and shared partner feelings."
       />
       <PageContent>
-        <EmptyState
-          icon={Smile}
-          title="No mood entries yet"
-          description="Log your daily feelings to share emotional closeness and track mood over time."
+        <MoodClient
+          initialItems={initialData.items}
+          initialTotal={initialData.total}
+          currentUserId={user.id}
         />
       </PageContent>
     </PageContainer>

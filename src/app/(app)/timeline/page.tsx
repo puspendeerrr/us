@@ -1,21 +1,25 @@
+import { getAuthenticatedContext } from '@/lib/auth/context';
+import { listTimelineEvents } from '@/lib/timeline/timeline.service';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageContent } from '@/components/layout/page-content';
-import { EmptyState } from '@/components/layout/empty-state';
-import { Clock } from 'lucide-react';
+import { TimelineClient } from '@/components/timeline/timeline-client';
 
-export default function TimelinePage() {
+export default async function TimelinePage() {
+  const { user } = await getAuthenticatedContext();
+  const initialData = await listTimelineEvents(user.id, { limit: 50, order: 'desc' });
+
   return (
     <PageContainer>
       <PageHeader
-        title="Relationship Timeline"
+        title="Our Story"
         description="The chronological story and milestones of our journey together."
       />
       <PageContent>
-        <EmptyState
-          icon={Clock}
-          title="No memories added yet"
-          description="Your story will unfold here chronologically as you record milestones, trips, and memories."
+        <TimelineClient
+          initialItems={initialData.items}
+          initialTotal={initialData.total}
+          currentUserId={user.id}
         />
       </PageContent>
     </PageContainer>
